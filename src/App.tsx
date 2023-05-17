@@ -1,18 +1,11 @@
 import { useRef, useState } from "react";
 import "./App.css";
+import { saveAs } from "file-saver";
+import Vtt from "vtt-creator";
 
-async function waitUntil(condition: boolean, callback: () => void) {
-  return await new Promise((resolve) => {
-    const interval = setInterval(() => {
-      if (condition) {
-        callback();
-        clearInterval(interval);
-        resolve("done");
-      }
-    }, 200);
-  });
-}
-
+const thumbnailWidth = 125;
+let thumbnailHeight = 0;
+const thumbnailsPerRow = 10;
 function App() {
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState("");
   const [thumbnailImageUrls, setThumbnailImageUrls] = useState<string[]>([]);
@@ -21,6 +14,7 @@ function App() {
   const [currentThumbnailIndex, setCurrentThumbnailIndex] = useState(0);
   const [timeBetweenFrames, setTimeBetweenFrames] = useState(0);
   const [canvasElem, setCanvasElem] = useState<HTMLCanvasElement | null>(null);
+  const [vttConstructor, setVttConstructor] = useState<Vtt | null>(null);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
@@ -34,15 +28,22 @@ function App() {
   }
 
   function handleThumbnailGeneration() {
+    const v = new Vtt();
+    setVttConstructor(v);
+  
     if (videoRef && videoRef.current) {
       const canvas = document.createElement("canvas");
-      const thumbnailWidth = 125;
-      const videoHeight = videoRef.current.clientHeight;
-      const thumbnailHeight =
-        (thumbnailWidth / videoRef.current.clientWidth) * videoHeight;
 
-      canvas.width = thumbnailWidth;
-      canvas.height = thumbnailHeight;
+      const videoHeight = videoRef.current.clientHeight;
+      thumbnailHeight = Math.floor(
+        (thumbnailWidth / videoRef.current.clientWidth) * videoHeight
+      );
+
+      canvas.width = thumbnailWidth * thumbnailsPerRow;
+
+      canvas.height =
+        Math.ceil(thumbnailCount / thumbnailsPerRow) * thumbnailHeight;
+
       const calculatedTimeBetweenFrames =
         videoRef.current.duration / thumbnailCount;
       setTimeBetweenFrames(calculatedTimeBetweenFrames);
@@ -52,17 +53,39 @@ function App() {
   }
 
   function handleVideoSeek() {
-    if (
-      currentThumbnailIndex > thumbnailCount ||
-      !canvasElem ||
-      !videoRef ||
-      !videoRef.current
-    )
+    if (!canvasElem || !videoRef || !videoRef.current) return;
+    if (currentThumbnailIndex > thumbnailCount) {
+      const dataUrl = canvasElem.toDataURL("image/jpeg", 0.7);
+      setThumbnailImageUrls((prev) => [...prev, dataUrl]);
+      saveAs(dataUrl, "thumbs.jpg");
+
+      const thumbsBlob = new Blob([vttConstructor.toString()], {
+        type: "text/plain;charset=utf-8",
+      });
+      saveAs(thumbsBlob, "thumbs.vtt");
+      console.log(vttConstructor.toString());
       return;
+    }
+
+    const prevTime = videoRef.current.currentTime - timeBetweenFrames;
+
     const ctx = canvasElem.getContext("2d");
-    ctx?.drawImage(videoRef.current, 0, 0, canvasElem.width, canvasElem.height);
-    const dataUrl = canvasElem.toDataURL("image/jpeg", 0.7);
-    setThumbnailImageUrls((prev) => [...prev, dataUrl]);
+    const rowIndex = Math.floor(currentThumbnailIndex / 10);
+    const columnIndex = currentThumbnailIndex % 10;
+    ctx?.drawImage(
+      videoRef.current,
+      columnIndex * thumbnailWidth,
+      rowIndex * thumbnailHeight,
+      thumbnailWidth,
+      thumbnailHeight
+    );
+    vttConstructor?.add(
+      prevTime,
+      videoRef.current.currentTime,
+      `thumbs.jpg#xywh=${rowIndex * thumbnailHeight},${
+        columnIndex * thumbnailWidth
+      },${thumbnailWidth},${thumbnailHeight}`
+    );
     setCurrentThumbnailIndex((prev) => prev + 1);
     videoRef.current.currentTime += timeBetweenFrames;
   }
