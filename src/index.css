@@ -67,3 +67,14 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+input[type="number"] {
+  padding: 0.25rem;
+  font-size: 1em;
+}
+
+label {
+  margin: 0.5rem;
+  cursor: pointer;
+}
+
